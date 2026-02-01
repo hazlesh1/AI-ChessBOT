@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
+// Date: 2026/02/01
 // Define a macro to get bit values at specific square
 #define get_bit(bitboard, square) ((bitboard & (1ULL << square))? 1 : 0)
 
