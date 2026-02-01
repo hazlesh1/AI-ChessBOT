@@ -1,6 +1,6 @@
 # Bitboard Chess Engine
 
-**Developer:** Leo Girard  
+**Developer:** Leo Girard  (14, Feb 2026)
 **Location:** Den Haag, NL  
 **Started:** February 2026
 
