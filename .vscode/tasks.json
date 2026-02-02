@@ -66,6 +66,7 @@
                 "isDefault": true
             },
             "detail": "compiler: C:/msys64/ucrt64/bin/gcc.exe"
+<<<<<<< HEAD
         },
         {
             "type": "cppbuild",
@@ -89,6 +90,8 @@
                 "isDefault": true
             },
             "detail": "compiler: C:/msys64/ucrt64/bin/gcc.exe"
+=======
+>>>>>>> c9cf9742679850b50de17d03929ef8aaffc9a0c9
         }
     ]
 }
