@@ -48,8 +48,25 @@ Abstraction with Enums: Moving away from "Magic Numbers." By using enum { P, N, 
 Funny Facts during this day:
 Watching Season 2 Frieren (Absolute peak). Wondering if I could implement my code with not just chess pieces, but with anime characters (yes, sounds very Otaku). 
 ____________________________________________________________________________________
+Date: 2026/02/14
+Developer: Leo Girard, (14)
+Location: Netherlands Den Haag
+
+Goal:
+Implement "Leaper" piece mechanics (Knights and Kings). Transition from static state to Dynamic Pre-calculation.
 
 
+
+____________________________________________________________________________________
+Date: 2026/03/01
+Developer: Leo Girard, (14)
+Location: Netherlands Den Haag
+
+Goal:
+Implement Sliding Piece Attacks (Bishops, Rooks, Queens) and the Occupancy system.
+
+
+____________________________________________________________________________________
 About: 
 The project:
 This Project was developed using a “Human-in-the-loop” AI workflow.  
