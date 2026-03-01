@@ -1,233 +1,198 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <string.h> // for memset
+#include <string.h>
 
-// Date: 2026/02/14
+// Date: 2026/02/21
 // Dev: Leo Girard
 // Project: Bitboard Chess Engine
-// Week 3 – Leaper Attack Generation (Knight + King)
-
+// Week 4 – Occupancy & Sliding Piece Attacks (Rook, Bishop, Queen)
 
 // ================================
 // MACROS (inline bit helpers)
 // ================================
-
-// Returns 1 if a bit is set on a square, otherwise 0
 #define get_bit(bitboard, square) ((bitboard & (1ULL << square)) ? 1 : 0)
-
-// Sets a bit on a square
 #define set_bit(bitboard, square) ((bitboard) |= (1ULL << (square)))
-
 
 // ================================
 // ENUMS (Piece & Side IDs)
 // ================================
-
-// Piece indices (White = uppercase, Black = lowercase)
 enum { P, N, B, R, Q, K, p, n, b, r, q, k };
-
-// Side to move
 enum { WHITE, BLACK, BOTH };
-
 
 // ================================
 // BOARD STRUCT (Game State)
 // ================================
-
 typedef struct {
-    uint64_t bitboards[12]; // One bitboard per piece type
-    int side;               // Side to move
+    uint64_t bitboards[12];
+    int side;
 } Board;
 
-
 // ================================
-// FEN Helpers
+// FEN HELPERS & PARSER
 // ================================
-
-// Converts a FEN character into internal piece ID
 int char_to_piece(char c) {
     if (c == 'P') return P; if (c == 'N') return N; if (c == 'B') return B;
     if (c == 'R') return R; if (c == 'Q') return Q; if (c == 'K') return K;
     if (c == 'p') return p; if (c == 'n') return n; if (c == 'b') return b;
     if (c == 'r') return r; if (c == 'q') return q; if (c == 'k') return k;
-    return -1; // Invalid piece
+    return -1;
 }
 
-
-// ================================
-// FEN Parser
-// ================================
-
-// Loads board position from a FEN string
 void parse_fen(char *fen, Board *board) {
-
-    // Clear board state
     memset(board, 0, sizeof(Board));
-
-    int square = 0; // Start at A8 (index 0)
-
-    // Parse piece placement section
+    int square = 0;
     while (*fen != ' ') {
-
-        // If it's a piece letter
         if ((*fen >= 'a' && *fen <= 'z') || (*fen >= 'A' && *fen <= 'Z')) {
             int piece = char_to_piece(*fen);
             set_bit(board->bitboards[piece], square);
             square++;
-        }
-        // If it's a number (empty squares)
-        else if (*fen >= '1' && *fen <= '8') {
+        } else if (*fen >= '1' && *fen <= '8') {
             square += (*fen - '0');
         }
-
-        // Skip '/'
         fen++;
     }
-
-    // Move to side-to-move section
     fen++;
     board->side = (*fen == 'w') ? WHITE : BLACK;
 }
 
-
 // ================================
-// WEEK 3 – Leaper Attack Tables
+// LEAPER ATTACK TABLES (Week 3)
 // ================================
-
-// Precomputed attack maps
 uint64_t knight_attacks[64];
 uint64_t king_attacks[64];
 
-
-// ================================
-// Knight Attack Generator
-// ================================
-
-// Returns attack bitboard for a knight on given square
 uint64_t mask_knight_attacks(int square) {
-
     uint64_t attacks = 0ULL;
-
-    int rank = square / 8;
-    int file = square % 8;
-
-    // All 8 knight offsets
-    int row_offsets[] = {-2, -2, -1, -1,  1,  1,  2,  2};
-    int col_offsets[] = {-1,  1, -2,  2, -2,  2, -1,  1};
-
+    int rank = square / 8, file = square % 8;
+    int r_off[] = {-2, -2, -1, -1, 1, 1, 2, 2};
+    int c_off[] = {-1, 1, -2, 2, -2, 2, -1, 1};
     for (int i = 0; i < 8; i++) {
-
-        int target_rank = rank + row_offsets[i];
-        int target_file = file + col_offsets[i];
-
-        // Stay inside board
-        if (target_rank >= 0 && target_rank < 8 &&
-            target_file >= 0 && target_file < 8) {
-
-            int target_square = target_rank * 8 + target_file;
-            set_bit(attacks, target_square);
-        }
+        int tr = rank + r_off[i], tf = file + c_off[i];
+        if (tr >= 0 && tr < 8 && tf >= 0 && tf < 8) set_bit(attacks, tr * 8 + tf);
     }
-
     return attacks;
 }
 
-
-// ================================
-// King Attack Generator
-// ================================
-
-// Returns attack bitboard for a king on given square
 uint64_t mask_king_attacks(int square) {
-
     uint64_t attacks = 0ULL;
-
-    int rank = square / 8;
-    int file = square % 8;
-
-    // All 8 king directions
-    int row_offsets[] = {-1, -1, -1,  0,  0,  1,  1,  1};
-    int col_offsets[] = {-1,  0,  1, -1,  1, -1,  0,  1};
-
+    int rank = square / 8, file = square % 8;
+    int r_off[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    int c_off[] = {-1, 0, 1, -1, 1, -1, 0, 1};
     for (int i = 0; i < 8; i++) {
-
-        int target_rank = rank + row_offsets[i];
-        int target_file = file + col_offsets[i];
-
-        if (target_rank >= 0 && target_rank < 8 &&
-            target_file >= 0 && target_file < 8) {
-
-            int target_square = target_rank * 8 + target_file;
-            set_bit(attacks, target_square);
-        }
+        int tr = rank + r_off[i], tf = file + c_off[i];
+        if (tr >= 0 && tr < 8 && tf >= 0 && tf < 8) set_bit(attacks, tr * 8 + tf);
     }
-
     return attacks;
 }
 
+// ================================
+// WEEK 4 – SLIDING PIECE PHYSICS
+// ================================
+
+// Combines all 12 bitboards to see the "Floor"
+uint64_t get_occupancy(Board *board) {
+    uint64_t occupancy = 0ULL;
+    for (int i = 0; i < 12; i++) occupancy |= board->bitboards[i];
+    return occupancy;
+}
+
+// Bishop Ray-Casting: Diagonal movement
+uint64_t mask_bishop_attacks(int square, uint64_t occupancy) {
+    uint64_t attacks = 0ULL;
+    int tr = square / 8, tf = square % 8;
+    int r, f;
+
+    // Top-Right, Top-Left, Bottom-Right, Bottom-Left
+    for (r = tr - 1, f = tf + 1; r >= 0 && f <= 7; r--, f++) {
+        set_bit(attacks, r * 8 + f);
+        if (get_bit(occupancy, r * 8 + f)) break; // Hit a piece! Stop the ray.
+    }
+    for (r = tr - 1, f = tf - 1; r >= 0 && f >= 0; r--, f--) {
+        set_bit(attacks, r * 8 + f);
+        if (get_bit(occupancy, r * 8 + f)) break;
+    }
+    for (r = tr + 1, f = tf + 1; r <= 7 && f <= 7; r++, f++) {
+        set_bit(attacks, r * 8 + f);
+        if (get_bit(occupancy, r * 8 + f)) break;
+    }
+    for (r = tr + 1, f = tf - 1; r <= 7 && f >= 0; r++, f--) {
+        set_bit(attacks, r * 8 + f);
+        if (get_bit(occupancy, r * 8 + f)) break;
+    }
+    return attacks;
+}
+
+// Rook Ray-Casting: Orthogonal movement
+uint64_t mask_rook_attacks(int square, uint64_t occupancy) {
+    uint64_t attacks = 0ULL;
+    int tr = square / 8, tf = square % 8;
+    int r, f;
+
+    for (r = tr - 1; r >= 0; r--) { // Up
+        set_bit(attacks, r * 8 + tf);
+        if (get_bit(occupancy, r * 8 + tf)) break;
+    }
+    for (r = tr + 1; r <= 7; r++) { // Down
+        set_bit(attacks, r * 8 + tf);
+        if (get_bit(occupancy, r * 8 + tf)) break;
+    }
+    for (f = tf - 1; f >= 0; f--) { // Left
+        set_bit(attacks, tr * 8 + f);
+        if (get_bit(occupancy, tr * 8 + f)) break;
+    }
+    for (f = tf + 1; f <= 7; f++) { // Right
+        set_bit(attacks, tr * 8 + f);
+        if (get_bit(occupancy, tr * 8 + f)) break;
+    }
+    return attacks;
+}
+
+// Queen is just Rook + Bishop combined
+uint64_t mask_queen_attacks(int square, uint64_t occupancy) {
+    return mask_rook_attacks(square, occupancy) | mask_bishop_attacks(square, occupancy);
+}
 
 // ================================
-// Initialization
+// INITIALIZATION & DEBUG
 // ================================
-
-// Precompute all knight and king attacks
-void init_leapers() {
-
-    for (int square = 0; square < 64; square++) {
-        knight_attacks[square] = mask_knight_attacks(square);
-        king_attacks[square]   = mask_king_attacks(square);
+void init_all() {
+    for (int i = 0; i < 64; i++) {
+        knight_attacks[i] = mask_knight_attacks(i);
+        king_attacks[i] = mask_king_attacks(i);
     }
 }
 
-
-// ================================
-// Debug: Print Bitboard
-// ================================
-
-// Prints bitboard as 8x8 grid
 void print_bitboard(uint64_t bitboard) {
-
     printf("\n");
-
     for (int row = 0; row < 8; row++) {
-
         for (int col = 0; col < 8; col++) {
-
-            int square = row * 8 + col;
-
             if (!col) printf(" %d ", 8 - row);
-
-            printf(" %d ", get_bit(bitboard, square));
+            printf(" %d ", get_bit(bitboard, row * 8 + col));
         }
-
         printf("\n");
     }
-
     printf("\n     a  b  c  d  e  f  g  h\n\n");
-    printf("     Bitboard Value (Decimal): %llu\n\n", bitboard);
 }
 
-
 // ================================
-// MAIN – Week 3 Test
+// MAIN – Week 4 Collision Test
 // ================================
+int main() {
+    init_all();
+    Board board;
 
-int main(){
-
-    // Initialize attack tables
-    init_leapers();
-
-    printf("--- WEEK 3: LEAPER ATTACK TEST ---\n");
-
-    // Test 1: Knight on e4 (index 36)
-    int knight_square = 36;
-    printf("Knight attacks from e4:\n");
-    print_bitboard(knight_attacks[knight_square]);
-
-    // Test 2: King on e8 (index 4)
-    int king_square = 4;
-    printf("King attacks from e8:\n");
-    print_bitboard(king_attacks[king_square]);
+    // FEN with a Rook on e4 and a Pawn blocking it at e6
+    char *test_fen = "8/8/4p3/8/4R3/8/8/8 w - - 0 1";
+    parse_fen(test_fen, &board);
+    
+    uint64_t occ = get_occupancy(&board);
+    
+    printf("--- WEEK 4: COLLISION TEST ---\n");
+    printf("Rook on e4, Blocked by piece on e6:\n");
+    
+    // Generate attacks for the Rook at e4 (index 36)
+    uint64_t rook_atk = mask_rook_attacks(36, occ);
+    print_bitboard(rook_atk);
 
     return 0;
 }
