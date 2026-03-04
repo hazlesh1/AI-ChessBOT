@@ -69,7 +69,7 @@ Implement Sliding Piece Attacks (Bishops, Rooks, Queens) and the Occupancy syste
 ____________________________________________________________________________________
 About: 
 The project:
-This Project was developed using a “Human-in-the-loop” AI workflow.  
+ 
 Developer:
 I have a background in high-level Python development, specifically in creating complex physics simulations (gravity in liquids, collision physics). I chose to build this Chess Engine in C to challenge myself with low-level memory management and hardware-level optimization, concepts I am currently learning through Harvard’s CS50x. 
 
