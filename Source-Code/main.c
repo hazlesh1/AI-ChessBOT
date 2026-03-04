@@ -7,6 +7,7 @@
 // Project: Bitboard Chess Engine
 // Week 4 – Occupancy & Sliding Piece Attacks (Rook, Bishop, Queen)
 
+// Instead of an O(n) loop checking 64 squares to find a piece, my bitboards allow for O(1) lookup. I'm performing 64 calculations in a single CPU cycle using bitwise operators
 
 // Some notes: AND -> both, OR -> either, XOR -> different, NOT -> flip, PARALLEL bitboard, 12 layers for more efficiency 
 
