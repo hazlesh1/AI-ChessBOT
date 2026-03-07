@@ -17,11 +17,35 @@
 #define get_bit(bitboard, square) ((bitboard & (1ULL << square)) ? 1 : 0)  // 1ULL << square moves bits to left (e.g. 3 -> 00001000 or 2)
 #define set_bit(bitboard, square) ((bitboard) |= (1ULL << (square)))
 
+// == WEEK 5 ==
+// MOVE ENCODING MACROS (32-bit integer)
+// source(6) | target(6) | piece(4) | promoted(4) | capture(1) | double_push(1) | enpassant(1) | castling(1)
+#define encode_move(source, target, piece, promoted, capture, double_push, enpassant, castling) \
+    ((source) | ((target) << 6) | ((piece) << 12) | ((promoted) << 16) | \
+    ((capture) << 20) | ((double_push) << 21) | ((enpassant) << 22) | ((castling) << 23))
+
+#define get_move_source(move) ((move) & 0x3f)
+#define get_move_target(move) (((move) >> 6) & 0x3f)
+// ============
+
 // ================================
 // ENUMS (Pieces as numbers)
 // ================================
 enum { P, N, B, R, Q, K, p, n, b, r, q, k };
 enum { WHITE, BLACK, BOTH };
+
+// == WEEK 5 ==
+// MOVE LIST STRUCT
+typedef struct {
+    uint32_t moves[256];
+    int count;
+} MoveList;
+
+static inline void add_move(MoveList *move_list, uint32_t move) {
+    move_list->moves[move_list->count] = move;
+    move_list->count++;
+}
+// ============
 
 // ================================
 // BOARD STRUCT (Game State)
@@ -29,6 +53,11 @@ enum { WHITE, BLACK, BOTH };
 typedef struct { // New data type name structure 
     uint64_t bitboards[12]; // Array of 12 unsigned 64 bit integers (6x2 piece types), each uint is 8 bytes meaning equals to 96 bytes 
     int side;  // turn indicator 
+    // == WEEK 5 ==
+    uint64_t occupancies[3]; // [WHITE], [BLACK], [BOTH]
+    int enpassant;           // Square index for en passant (or -1)
+    int castling;            // 4-bit integer tracking castling rights
+    // ============
 } Board;
 // This whole thing can be visualized by LAYERS, so basically each types of pieces have their own bitboards, making it efficient. 
 
@@ -59,9 +88,11 @@ int char_to_piece(char c) {
     return -1;
 }
 
-// THIS DOESNT HAVE THE RULES IMPLEMENTED YET. ONLY PHYSICS. yeah theres castling and en passant and draws 
 void parse_fen(char *fen, Board *board) { // address of FEN and board :D 
     memset(board, 0, sizeof(Board)); // An entire board with all zeros
+    // == WEEK 5 == 
+    board->enpassant = -1; // Default no en passant
+    // ============
     int square = 0; 
     while (*fen != ' ') { // Focus on Piece Placement 
         if ((*fen >= 'a' && *fen <= 'z') || (*fen >= 'A' && *fen <= 'Z')) {
@@ -79,6 +110,13 @@ void parse_fen(char *fen, Board *board) { // address of FEN and board :D
     }
     fen++;
     board->side = (*fen == 'w') ? WHITE : BLACK; // Who 
+    
+    // == WEEK 5 ==
+    // Update the occupancy arrays after parsing
+    for (int p = P; p <= K; p++) board->occupancies[WHITE] |= board->bitboards[p];
+    for (int p = p; p <= k; p++) board->occupancies[BLACK] |= board->bitboards[p];
+    board->occupancies[BOTH] = board->occupancies[WHITE] | board->occupancies[BLACK];
+    // ============
 }
 
 // ================================
@@ -88,6 +126,27 @@ void parse_fen(char *fen, Board *board) { // address of FEN and board :D
 // Array of 64 bitboards -> calculating every moves a piece can take, looks at a position then calculates. Basically a lookup table.
 uint64_t knight_attacks[64];
 uint64_t king_attacks[64];
+// == WEEK 5 ==
+uint64_t pawn_attacks[2][64]; // [side][square]
+// ============
+
+// == WEEK 5 ==
+uint64_t mask_pawn_attacks(int side, int square) {
+    uint64_t attacks = 0ULL;
+    uint64_t piece_bitboard = 0ULL;
+    set_bit(piece_bitboard, square);
+
+    // Prevent pieces from wrapping around the board edges during capture
+    if (side == WHITE) {
+        if ((piece_bitboard >> 7) & 0xfefefefefefefefeULL) attacks |= (piece_bitboard >> 7);
+        if ((piece_bitboard >> 9) & 0x7f7f7f7f7f7f7f7fULL) attacks |= (piece_bitboard >> 9);
+    } else {
+        if ((piece_bitboard << 7) & 0x7f7f7f7f7f7f7f7fULL) attacks |= (piece_bitboard << 7);
+        if ((piece_bitboard << 9) & 0xfefefefefefefefeULL) attacks |= (piece_bitboard << 9);
+    }
+    return attacks;
+}
+// ============
 
 uint64_t mask_knight_attacks(int square) {
     uint64_t attacks = 0ULL;
@@ -183,6 +242,64 @@ uint64_t mask_queen_attacks(int square, uint64_t occupancy) {
     return mask_rook_attacks(square, occupancy) | mask_bishop_attacks(square, occupancy);
 }
 
+
+// == WEEK 5 ==
+// THE MOVE GENERATOR
+// This function combines physics (Week 4) with rules (Week 5)
+void generate_moves(Board *board, MoveList *move_list) {
+    move_list->count = 0;
+    int source_square, target_square;
+    uint64_t bitboard, attacks;
+
+    // Example 1: Generate Knight Moves
+    int knight_piece = (board->side == WHITE) ? N : n;
+    bitboard = board->bitboards[knight_piece];
+    
+    // Loop through all knights on the board
+    while (bitboard) {
+        source_square = __builtin_ctzll(bitboard); // Get exact square index of the knight
+        
+        // Get attacks, mask out friendly pieces (can't capture own team)
+        attacks = knight_attacks[source_square] & ~board->occupancies[board->side];
+        
+        while (attacks) {
+            target_square = __builtin_ctzll(attacks);
+            
+            // Check if it's a capture
+            int capture_flag = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
+            
+            add_move(move_list, encode_move(source_square, target_square, knight_piece, 0, capture_flag, 0, 0, 0));
+            
+            attacks &= attacks - 1; // Pop LS1B
+        }
+        bitboard &= bitboard - 1; // Pop LS1B
+    }
+
+    // Example 2: Generate Rook Moves (Sliders)
+    int rook_piece = (board->side == WHITE) ? R : r;
+    bitboard = board->bitboards[rook_piece];
+
+    while (bitboard) {
+        source_square = __builtin_ctzll(bitboard);
+        // Rook attack generation needs the current BOTH occupancy layer to stop ray casting 
+        attacks = mask_rook_attacks(source_square, board->occupancies[BOTH]) & ~board->occupancies[board->side];
+        
+        while (attacks) {
+            target_square = __builtin_ctzll(attacks);
+            int capture_flag = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
+            
+            add_move(move_list, encode_move(source_square, target_square, rook_piece, 0, capture_flag, 0, 0, 0));
+            
+            attacks &= attacks - 1;
+        }
+        bitboard &= bitboard - 1;
+    }
+    
+    // (Note for Leo: You'll replicate this loop structure for Bishops, Queens, Kings, and write the specific pawn push logic shifting << 8 or >> 8).
+}
+// ============
+
+
 // ================================
 // INITIALIZATION & DEBUG 
 // ================================
@@ -191,6 +308,10 @@ uint64_t mask_queen_attacks(int square, uint64_t occupancy) {
 // THIS BASICALLY CREATES A MAP? TO GIVE ALL POSSIBLE MOVES -> I WILL ADD THE SLIDERS IN WEEK 5 or 6
 void init_all() { // Initialization 
     for (int i = 0; i < 64; i++) { // Iterates through every single square on the board 
+        // == WEEK 5 ==
+        pawn_attacks[WHITE][i] = mask_pawn_attacks(WHITE, i);
+        pawn_attacks[BLACK][i] = mask_pawn_attacks(BLACK, i);
+        // ============
         knight_attacks[i] = mask_knight_attacks(i);
         king_attacks[i] = mask_king_attacks(i);
     }
@@ -206,7 +327,7 @@ void print_bitboard(uint64_t bitboard) {
         }
         printf("\n");
     }
-    printf("\n     a  b  c  d  e  f  g  h\n\n");
+    printf("\n    a  b  c  d  e  f  g  h\n\n");
 }
 // My bitboard is a flat line of 64 bits. To show it as a board I have to mathematically wrap that line every 8 bits. This formula maps the 2D visual grid back to the 1D physical memory.
 
@@ -223,12 +344,19 @@ int main() {
     
     uint64_t occ = get_occupancy(&board);
     
-    printf("--- WEEK 4: COLLISION TEST ---\n");
-    printf("Rook on e4, Blocked by piece on e6:\n");
+    // printf("--- WEEK 4: COLLISION TEST ---\n");
+    // printf("Rook on e4, Blocked by piece on e6:\n");
     
     // Generate attacks for the Rook at e4 (index 36)
-    uint64_t rook_atk = mask_rook_attacks(36, occ);
-    print_bitboard(rook_atk);
+    // uint64_t rook_atk = mask_rook_attacks(36, occ);
+    // print_bitboard(rook_atk);
+    
+    // == WEEK 5 ==
+    printf("--- WEEK 5: MOVE GENERATION TEST ---\n");
+    MoveList moves;
+    generate_moves(&board, &moves);
+    printf("Total pseudo-legal moves for Knights and Rooks generated: %d\n", moves.count);
+    // ============
 
     return 0;
 }
