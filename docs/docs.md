@@ -24,7 +24,7 @@ Funny Facts during this day:
 I was listening to the Frieren soundtrack the whole time with my new Denon PerL Pros. 
 ____________________________________________________________________________________
 Date: 2026/02/08
-Developer: Leo Girard, (14)
+Developer: Leo Girard, (14) 
 Location: Netherlands Den Haag
 
 Goal: 
@@ -67,9 +67,24 @@ Implement Sliding Piece Attacks (Bishops, Rooks, Queens) and the Occupancy syste
 
 
 ____________________________________________________________________________________
+Date: 2026/03/07
+Developer: Leo Girard, (14)
+Location: Netherlands Den Haag
+
+Goal: Turn attack maps into actual chess moves. 
+
+Implementation: 
+Pseudo-Legal Generator: Created a system that lists every possible move for every piece, ignoring whether the king is in check (for now).
+
+Move Bit-Packaging: Compressed a move’s data (start square, end square, piece, flags) into one 32-bit integer to save memory and speed up the AI later. 
+
+The Pawn: Coded special logic for pawn-only rules: single/double pushes, capturing and the choice at the end side of the board to promote to a Queen or Knight. 
+
+Bit Pop: Used __builtin_ctzll to instantly find piece location on the 64 bit board without using for loops. 
+
+____________________________________________________________________________________
 About: 
-The project:
- 
+The project: 
 Developer:
 I have a background in high-level Python development, specifically in creating complex physics simulations (gravity in liquids, collision physics). I chose to build this Chess Engine in C to challenge myself with low-level memory management and hardware-level optimization, concepts I am currently learning through Harvard’s CS50x. 
 

@@ -279,8 +279,10 @@ void generate_moves(Board *board, MoveList *move_list) {
     int rook_piece = (board->side == WHITE) ? R : r;
     bitboard = board->bitboards[rook_piece];
 
+
+    // == WEEK 5 == 
     while (bitboard) {
-        source_square = __builtin_ctzll(bitboard);
+        source_square = __builtin_ctzll(bitboard); // High speed CPU command. First 1 CPU sees and returns X index.
         // Rook attack generation needs the current BOTH occupancy layer to stop ray casting 
         attacks = mask_rook_attacks(source_square, board->occupancies[BOTH]) & ~board->occupancies[board->side];
         
@@ -294,8 +296,7 @@ void generate_moves(Board *board, MoveList *move_list) {
         }
         bitboard &= bitboard - 1;
     }
-    
-    // (Note for Leo: You'll replicate this loop structure for Bishops, Queens, Kings, and write the specific pawn push logic shifting << 8 or >> 8).
+
 }
 // ============
 
@@ -360,3 +361,5 @@ int main() {
 
     return 0;
 }
+
+// Debugged using GEMINI 3.1 PRO for == WEEK 5 == 
