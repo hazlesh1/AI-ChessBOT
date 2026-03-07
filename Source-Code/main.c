@@ -6,26 +6,14 @@
 // Dev: Leo Girard
 // Project: Bitboard Chess Engine
 // Week 4 – Occupancy & Sliding Piece Attacks (Rook, Bishop, Queen)
-
 // Instead of an O(n) loop checking 64 squares to find a piece, my bitboards allow for O(1) lookup. I'm performing 64 calculations in a single CPU cycle using bitwise operators
-
 // Some notes: AND -> both, OR -> either, XOR -> different, NOT -> flip, PARALLEL bitboard, 12 layers for more efficiency 
 
-
-
-
-
-
-// ================================
-// MACROS (inline bit helpers) 
-// ================================
+// ----------------------------------------------------------------
+// MACROS & CONSTANTS
+// ----------------------------------------------------------------
 #define get_bit(bitboard, square) ((bitboard & (1ULL << square)) ? 1 : 0)  // 1ULL << square moves bits to left (e.g. 3 -> 00001000 or 2)
 #define set_bit(bitboard, square) ((bitboard) |= (1ULL << (square)))
-
-
-
-
-
 
 // == WEEK 5 ==
 // MOVE ENCODING MACROS (32-bit integer)
@@ -38,28 +26,12 @@
 #define get_move_target(move) (((move) >> 6) & 0x3f)
 // ============
 
-
-
-
-
-
-// ================================
-// ENUMS (Pieces as numbers)
-// ================================
 enum { P, N, B, R, Q, K, p, n, b, r, q, k };
 enum { WHITE, BLACK, BOTH };
 
-
-
-
-
-
-
-
-// ================================
-// DATA STRUCTURES 
-// ================================
-
+// ----------------------------------------------------------------
+// DATA STRUCTURES
+// ----------------------------------------------------------------
 // == WEEK 5 ==
 // MOVE LIST STRUCT
 typedef struct {
@@ -73,14 +45,7 @@ static inline void add_move(MoveList *move_list, uint32_t move) {
 }
 // ============
 
-
-
-
-
-
-// ================================
 // BOARD STRUCT (Game State)
-// ================================
 typedef struct { // New data type name structure 
     uint64_t bitboards[12]; // Array of 12 unsigned 64 bit integers (6x2 piece types), each uint is 8 bytes meaning equals to 96 bytes 
     int side;  // turn indicator 
@@ -92,14 +57,9 @@ typedef struct { // New data type name structure
 } Board;
 // This whole thing can be visualized by LAYERS, so basically each types of pieces have their own bitboards, making it efficient. 
 
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // GLOBAL ATTACK TABLES
-// ================================
-
+// ----------------------------------------------------------------
 // Array of 64 bitboards -> calculating every moves a piece can take, looks at a position then calculates. Basically a lookup table.
 uint64_t knight_attacks[64];
 uint64_t king_attacks[64];
@@ -107,14 +67,9 @@ uint64_t king_attacks[64];
 uint64_t pawn_attacks[2][64]; // [side][square]
 // ============
 
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // LEAPER ATTACK MASKING (Physics)
-// ================================
-
+// ----------------------------------------------------------------
 // == WEEK 5 ==
 uint64_t mask_pawn_attacks(int side, int square) {
     uint64_t attacks = 0ULL;
@@ -146,7 +101,6 @@ uint64_t mask_knight_attacks(int square) {
     return attacks;
 }
 
-// exact same here but for king 
 uint64_t mask_king_attacks(int square) {
     uint64_t attacks = 0ULL;
     int rank = square / 8, file = square % 8;
@@ -159,23 +113,14 @@ uint64_t mask_king_attacks(int square) {
     return attacks;
 }
 
-
-
-
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // SLIDING PIECE ATTACKS (Physics)
-// ================================
-
+// ----------------------------------------------------------------
 // Bishop Ray-Casting: Diagonal movement -> basically a really fancy and cool way of checking square-by-square the direction a bishop is going. 
 uint64_t mask_bishop_attacks(int square, uint64_t occupancy) {
     uint64_t attacks = 0ULL;
     int tr = square / 8, tf = square % 8;
     int r, f;
-
     // Top-Right, Top-Left, Bottom-Right, Bottom-Left 
     // WHAT WE ARE DOING first we set the square as attacked we then check the occupancy if there is something we break the loop there. 
     for (r = tr - 1, f = tf + 1; r >= 0 && f <= 7; r--, f++) {
@@ -202,7 +147,6 @@ uint64_t mask_rook_attacks(int square, uint64_t occupancy) {
     uint64_t attacks = 0ULL;
     int tr = square / 8, tf = square % 8;
     int r, f;
-
     for (r = tr - 1; r >= 0; r--) { // Up
         set_bit(attacks, r * 8 + tf);
         if (get_bit(occupancy, r * 8 + tf)) break;
@@ -227,16 +171,9 @@ uint64_t mask_queen_attacks(int square, uint64_t occupancy) {
     return mask_rook_attacks(square, occupancy) | mask_bishop_attacks(square, occupancy);
 }
 
-
-
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // BOARD HELPERS & FEN PARSER
-// ================================
-
+// ----------------------------------------------------------------
 // Uses OR to put all 12 pieces bitboards into one single 64 bit map. Basically a kind of physical floor where all pieces are. 
 uint64_t get_occupancy(Board *board) { // NOT SUPER EFFICIENT RN WILL UPDATE 
     uint64_t occupancy = 0ULL;
@@ -244,7 +181,6 @@ uint64_t get_occupancy(Board *board) { // NOT SUPER EFFICIENT RN WILL UPDATE
     return occupancy;
 }
 
-// translator basically enum 
 int char_to_piece(char c) {
     if (c == 'P') return P; if (c == 'N') return N; if (c == 'B') return B;
     if (c == 'R') return R; if (c == 'Q') return Q; if (c == 'K') return K;
@@ -255,8 +191,6 @@ int char_to_piece(char c) {
 
 // FEN HELPERS & PARSER  -> FEN (Forsyth-Edwards Notation) according to Google looks something like this rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w. 
 // in the long output, the letters represent pieces, the numbers represent empty squres, w or b is just whose turn. 
-
-// ================================
 // 8 [r][n][b][q][k][b][n][r] (黒)
 // 7 [p][p][p][p][p][p][p][p]
 // 6 [ ][ ][ ][ ][ ][ ][ ][ ]
@@ -267,7 +201,6 @@ int char_to_piece(char c) {
 // 1 [R][N][B][Q][K][B][N][R] (白)
 //     a  b  c  d  e  f  g  h
 // representation of rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w as a chess board. 
-// ================================
 
 void parse_fen(char *fen, Board *board) { // address of FEN and board :D 
     memset(board, 0, sizeof(Board)); // An entire board with all zeros
@@ -300,15 +233,9 @@ void parse_fen(char *fen, Board *board) { // address of FEN and board :D
     // ============
 }
 
-
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // GAME LOGIC (Move Gen & Init)
-// ================================
-
+// ----------------------------------------------------------------
 // == WEEK 5 ==
 // THE MOVE GENERATOR
 // This function combines physics (Week 4) with rules (Week 5)
@@ -324,18 +251,13 @@ void generate_moves(Board *board, MoveList *move_list) {
     // Loop through all knights on the board
     while (bitboard) {
         source_square = __builtin_ctzll(bitboard); // Get exact square index of the knight
-        
         // Get attacks, mask out friendly pieces (can't capture own team)
         attacks = knight_attacks[source_square] & ~board->occupancies[board->side];
-        
         while (attacks) {
             target_square = __builtin_ctzll(attacks);
-            
             // Check if it's a capture
             int capture_flag = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
-            
             add_move(move_list, encode_move(source_square, target_square, knight_piece, 0, capture_flag, 0, 0, 0));
-            
             attacks &= attacks - 1; // Pop LS1B
         }
         bitboard &= bitboard - 1; // Pop LS1B
@@ -345,29 +267,20 @@ void generate_moves(Board *board, MoveList *move_list) {
     int rook_piece = (board->side == WHITE) ? R : r;
     bitboard = board->bitboards[rook_piece];
 
-
     // == WEEK 5 == 
     while (bitboard) {
         source_square = __builtin_ctzll(bitboard); // High speed CPU command. First 1 CPU sees and returns X index.
         // Rook attack generation needs the current BOTH occupancy layer to stop ray casting 
         attacks = mask_rook_attacks(source_square, board->occupancies[BOTH]) & ~board->occupancies[board->side];
-        
         while (attacks) {
             target_square = __builtin_ctzll(attacks);
             int capture_flag = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
-            
             add_move(move_list, encode_move(source_square, target_square, rook_piece, 0, capture_flag, 0, 0, 0));
-            
             attacks &= attacks - 1;
         }
         bitboard &= bitboard - 1;
     }
-
 }
-
-
-
-
 // ============
 
 // PRE COMPUTATION FOR BETTER EFFICIENCY DURING THE GAME
@@ -383,15 +296,9 @@ void init_all() { // Initialization
     }
 }
 
-
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // DEBUG TOOLS
-// ================================
-
+// ----------------------------------------------------------------
 // Basically the function that makes everything readable to the human into a big big string into an array. 
 void print_bitboard(uint64_t bitboard) {
     printf("\n");
@@ -406,14 +313,9 @@ void print_bitboard(uint64_t bitboard) {
 }
 // My bitboard is a flat line of 64 bits. To show it as a board I have to mathematically wrap that line every 8 bits. This formula maps the 2D visual grid back to the 1D physical memory.
 
-
-
-
-
-
-// ================================
+// ----------------------------------------------------------------
 // MAIN – Week 4 Collision Test
-// ================================
+// ----------------------------------------------------------------
 int main() {
     init_all();
     Board board;
@@ -421,15 +323,6 @@ int main() {
     // FEN with a Rook on e4 and a Pawn blocking it at e6
     char *test_fen = "8/8/4p3/8/4R3/8/8/8 w - - 0 1";
     parse_fen(test_fen, &board);
-    
-    // uint64_t occ = get_occupancy(&board);
-    
-    // printf("--- WEEK 4: COLLISION TEST ---\n");
-    // printf("Rook on e4, Blocked by piece on e6:\n");
-    
-    // Generate attacks for the Rook at e4 (index 36)
-    // uint64_t rook_atk = mask_rook_attacks(36, occ);
-    // print_bitboard(rook_atk);
     
     // == WEEK 5 ==
     printf("--- WEEK 5: MOVE GENERATION TEST ---\n");
@@ -441,4 +334,4 @@ int main() {
     return 0;
 }
 
-// DEBUGGED WITH HELP OF GEMINI 3.1 PRO FOR WEEK 5 
+// DEBUGGED WITH HELP OF GEMINI 3.1 PRO FOR WEEK 5
