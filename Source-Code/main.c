@@ -526,53 +526,36 @@ uint32_t get_user_move(Board *board) {
 }
 
 // ----------------------------------------------------------------
-// MAIN 
+// STATLESS MAIN FOR WEB 
 // ----------------------------------------------------------------
-int main() {
+int main(int argc, char *argv[]) {
     init_all();
     Board board;
 
-    parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", &board);
-
-    while (1) {
-        print_board(&board);
-
-        // 1. Generate legal moves to check for Game Over
-        MoveList moves;
-        generate_moves(&board, &moves);
-        
-        int legal_move_count = 0;
-        for (int i = 0; i < moves.count; i++) {
-            Board temp = board;
-            make_move(&temp, moves.moves[i]);
-            int king_sq = __builtin_ctzll(temp.bitboards[(board.side == WHITE) ? K : k]);
-            if (!is_square_attacked(&temp, king_sq, temp.side)) legal_move_count++;
-        }
-
-        // 2. Check for Checkmate/Stalemate
-        if (legal_move_count == 0) {
-            int king_sq = __builtin_ctzll(board.bitboards[(board.side == WHITE) ? K : k]);
-            if (is_square_attacked(&board, king_sq, board.side ^ 1)) {
-                if (board.side == WHITE) printf("CHECKMATE! BLACK WINS!\n");
-                else printf("CHECKMATE! WHITE WINS!\n");
-            } else {
-                printf("STALEMATE! It's a draw.\n");
-            }
-            break; 
-        }
-
-        // 3. Execute Turns
-        if (board.side == WHITE) {
-            uint32_t move = get_user_move(&board);
-            make_move(&board, move);
-        } else {
-            printf("AI is thinking...\n");
-            uint32_t move = search_position(&board, 4); 
-            printf("AI plays: ");
-            print_move(move);
-            make_move(&board, move);
-        }
+    if (argc > 1) {
+        parse_fen(argv[1], &board);
+    } else {
+        parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", &board);
     }
 
+
+    int king_piece = (board.side == WHITE) ? K : k;
+    if (board.bitboards[king_piece] == 0) {
+
+        printf("error_no_king\n");
+        return 0;
+    }
+
+  
+    uint32_t move = search_position(&board, 4); 
+    
+
+    if (move != 0) {
+        print_move(move);
+    } else {
+        printf("none\n");
+    }
+
+    fflush(stdout); 
     return 0;
 }

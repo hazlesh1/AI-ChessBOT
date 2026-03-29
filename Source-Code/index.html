@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>C Engine Visualizer</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+</head>
+<body style="display: flex; flex-direction: column; align-items: center; font-family: sans-serif; margin-top: 50px;">
+
+    <h2>FAHHHHHHHHH THIS TOOK ME 2 HOURS TO JS FRICKING DEBUG THE PAGEEEE</h2>
+    <div id="board" style="width: 400px"></div>
+    <p id="status">Your turn (White).</p>
+
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <script>
+        var board = null;
+        var game = new Chess();
+        var $status = $('#status');
+
+        function onDragStart (source, piece, position, orientation) {
+
+            if (game.game_over() || piece.search(/^b/) !== -1) {
+                return false;
+            }
+        }
+
+        function onDrop (source, target) {
+
+            var move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' 
+            });
+
+            if (move === null) return 'snapback';
+
+            $status.text("Engine is thinking...");
+            window.setTimeout(makeEngineMove, 250);
+        }
+
+        function onSnapEnd () {
+            board.position(game.fen());
+        }
+
+        function makeEngineMove() {
+           
+            fetch('/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fen: game.fen() })
+            })
+            .then(response => response.json())
+            .then(data => {
+   
+                let engineMove = data.move; 
+                if (engineMove && engineMove.length >= 4) {
+                    let from_sq = engineMove.substring(0, 2);
+                    let to_sq = engineMove.substring(2, 4);
+                    
+     
+                    game.move({ from: from_sq, to: to_sq, promotion: 'q' });
+   
+                    board.position(game.fen());
+                    
+                    $status.text("Your turn (White).");
+                }
+            })
+            .catch(err => {
+                console.error("Error asking engine for move: ", err);
+                $status.text("Error communicating with engine.");
+            });
+        }
+
+        var config = {
+            draggable: true,
+            position: 'start',
+
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png', 
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd
+        };
+        board = Chessboard('board', config);
+    </script>
+</body>
+</html>
