@@ -23,11 +23,22 @@
 #define get_move_target(move) (((move) >> 6) & 0x3f)
 #define get_move_piece(move) (((move) >> 12) & 0xf)
 #define get_move_capture(move) (((move) >> 20) & 0x1)
+#define get_move_castling(move) (((move) >> 23) & 0x1)
 // ============
 
 enum { P, N, B, R, Q, K, p, n, b, r, q, k };
 enum { WHITE, BLACK, BOTH };
 
+enum {
+    a8, b8, c8, d8, e8, f8, g8, h8,
+    a7, b7, c7, d7, e7, f7, g7, h7,
+    a6, b6, c6, d6, e6, f6, g6, h6,
+    a5, b5, c5, d5, e5, f5, g5, h5,
+    a4, b4, c4, d4, e4, f4, g4, h4,
+    a3, b3, c3, d3, e3, f3, g3, h3,
+    a2, b2, c2, d2, e2, f2, g2, h2,
+    a1, b1, c1, d1, e1, f1, g1, h1
+};
 
 const int knight_pst[64] = {
     -50,-40,-30,-30,-30,-30,-40,-50,
@@ -206,9 +217,12 @@ void make_move(Board *board, uint32_t move) {
     int target = get_move_target(move);
     int piece = get_move_piece(move);
     int capture = get_move_capture(move);
+    int castling = get_move_castling(move);
+
 
     clear_bit(board->bitboards[piece], source);
     set_bit(board->bitboards[piece], target);
+
 
     if (capture) {
         int start = (board->side == WHITE) ? p : P;
@@ -221,16 +235,24 @@ void make_move(Board *board, uint32_t move) {
         }
     }
 
-    // 3. Refresh occupancies
+
+    if (castling) {
+        switch (target) {
+            case g1: clear_bit(board->bitboards[R], h1); set_bit(board->bitboards[R], f1); break;
+            case c1: clear_bit(board->bitboards[R], a1); set_bit(board->bitboards[R], d1); break;
+            case g8: clear_bit(board->bitboards[r], h8); set_bit(board->bitboards[r], f8); break;
+            case c8: clear_bit(board->bitboards[r], a8); set_bit(board->bitboards[r], d8); break;
+        }
+    }
+
+
     memset(board->occupancies, 0, sizeof(board->occupancies));
     for (int i = P; i <= K; i++) board->occupancies[WHITE] |= board->bitboards[i];
     for (int i = p; i <= k; i++) board->occupancies[BLACK] |= board->bitboards[i];
     board->occupancies[BOTH] = board->occupancies[WHITE] | board->occupancies[BLACK];
 
-    // 4. Flip side
     board->side ^= 1;
 }
-
 // ----------------------------------------------------------------
 // BOARD HELPERS & FEN PARSER
 // ----------------------------------------------------------------
@@ -538,17 +560,14 @@ int main(int argc, char *argv[]) {
         parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", &board);
     }
 
-
     int king_piece = (board.side == WHITE) ? K : k;
     if (board.bitboards[king_piece] == 0) {
-
         printf("error_no_king\n");
         return 0;
     }
 
-  
+    // Increased to Depth 6 for 1200+ Elo play
     uint32_t move = search_position(&board, 6); 
-    
 
     if (move != 0) {
         print_move(move);

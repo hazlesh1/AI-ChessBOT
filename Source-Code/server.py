@@ -1,34 +1,28 @@
-from flask import Flask, request, jsonify
+from flask import Flask, render_template, request, jsonify
 import subprocess
-import os
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return app.send_static_file('index.html')
+    return render_template('index.html')
+
+# Use the 'r' before the string to handle Windows backslashes correctly!
+ENGINE_PATH = r'C:\Users\leogi\Downloads\AI-ChessBOT\Source-Code\main.exe'
 
 @app.route('/move', methods=['POST'])
-def get_move():
-    data = request.json
-    fen = data.get('fen')
-    
-
+def move():
+    fen = request.form.get('fen')
     try:
-        engine_process = subprocess.run(
-            ['main.exe', fen], 
-            capture_output=True, 
-            text=True,
-            shell=True 
-        )
+        # We point directly to the file so Windows can't miss it
+        result = subprocess.run([ENGINE_PATH, fen], capture_output=True, text=True)
         
-        best_move = engine_process.stdout.strip()
-        print(f"Engine thought: {best_move}") 
-        return jsonify({'move': best_move})
+        move_found = result.stdout.strip()
+        print(f"DEBUG: Raw Engine Output: '{move_found}'") 
+        
+        return jsonify({'move': move_found if move_found else "none"})
     except Exception as e:
-        print(f"Error running main.exe: {e}")
-        return jsonify({'error': str(e)}), 500
-
+        print(f"Python Error: {e}")
+        return jsonify({'error': str(e)})
 if __name__ == '__main__':
-    print("Chess server running at http://127.0.0.1:5000")
-    app.run(port=5000)
+    app.run(debug=True)
