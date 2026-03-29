@@ -5,35 +5,55 @@
 // Date: 2026/02/21
 // Dev: Leo Girard
 // Project: Bitboard Chess Engine
-// Week 4 – Occupancy & Sliding Piece Attacks (Rook, Bishop, Queen)
-// Instead of an O(n) loop checking 64 squares to find a piece, my bitboards allow for O(1) lookup. I'm performing 64 calculations in a single CPU cycle using bitwise operators
-// Some notes: AND -> both, OR -> either, XOR -> different, NOT -> flip, PARALLEL bitboard, 12 layers for more efficiency 
+// Week 6 – Completing the Move Generator & Legality 
 
 // ----------------------------------------------------------------
 // MACROS & CONSTANTS
 // ----------------------------------------------------------------
-#define get_bit(bitboard, square) ((bitboard & (1ULL << square)) ? 1 : 0)  // 1ULL << square moves bits to left (e.g. 3 -> 00001000 or 2)
+#define get_bit(bitboard, square) ((bitboard & (1ULL << square)) ? 1 : 0)
 #define set_bit(bitboard, square) ((bitboard) |= (1ULL << (square)))
+#define clear_bit(bitboard, square) ((bitboard) &= ~(1ULL << (square)))
 
 // == WEEK 5 ==
-// MOVE ENCODING MACROS (32-bit integer)
-// source(6) | target(6) | piece(4) | promoted(4) | capture(1) | double_push(1) | enpassant(1) | castling(1)
 #define encode_move(source, target, piece, promoted, capture, double_push, enpassant, castling) \
     ((source) | ((target) << 6) | ((piece) << 12) | ((promoted) << 16) | \
     ((capture) << 20) | ((double_push) << 21) | ((enpassant) << 22) | ((castling) << 23))
 
 #define get_move_source(move) ((move) & 0x3f)
 #define get_move_target(move) (((move) >> 6) & 0x3f)
+#define get_move_piece(move) (((move) >> 12) & 0xf)
+#define get_move_capture(move) (((move) >> 20) & 0x1)
 // ============
 
 enum { P, N, B, R, Q, K, p, n, b, r, q, k };
 enum { WHITE, BLACK, BOTH };
 
+
+const int knight_pst[64] = {
+    -50,-40,-30,-30,-30,-30,-40,-50,
+    -40,-20,  0,  0,  0,  0,-20,-40,
+    -30,  0, 10, 15, 15, 10,  0,-30,
+    -30,  5, 15, 20, 20, 15,  5,-30,
+    -30,  0, 15, 20, 20, 15,  0,-30,
+    -30,  5, 10, 15, 15, 10,  5,-30,
+    -40,-20,  0,  5,  5,  0,-20,-40,
+    -50,-40,-30,-30,-30,-30,-40,-50
+};
+
+const int pawn_pst[64] = {
+     0,  0,  0,  0,  0,  0,  0,  0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+     5,  5, 10, 25, 25, 10,  5,  5,
+     0,  0,  0, 20, 20,  0,  0,  0,
+     5, -5,-10,  0,  0,-10, -5,  5,
+     5, 10, 10,-20,-20, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0
+};
+
 // ----------------------------------------------------------------
 // DATA STRUCTURES
 // ----------------------------------------------------------------
-// == WEEK 5 ==
-// MOVE LIST STRUCT
 typedef struct {
     uint32_t moves[256];
     int count;
@@ -43,40 +63,29 @@ static inline void add_move(MoveList *move_list, uint32_t move) {
     move_list->moves[move_list->count] = move;
     move_list->count++;
 }
-// ============
 
-// BOARD STRUCT (Game State)
-typedef struct { // New data type name structure 
-    uint64_t bitboards[12]; // Array of 12 unsigned 64 bit integers (6x2 piece types), each uint is 8 bytes meaning equals to 96 bytes 
-    int side;  // turn indicator 
-    // == WEEK 5 ==
-    uint64_t occupancies[3]; // [WHITE], [BLACK], [BOTH]
-    int enpassant;           // Square index for en passant (or -1)
-    int castling;            // 4-bit integer tracking castling rights
-    // ============
+typedef struct { 
+    uint64_t bitboards[12]; 
+    int side;  
+    uint64_t occupancies[3]; 
+    int enpassant;           
+    int castling;            
 } Board;
-// This whole thing can be visualized by LAYERS, so basically each types of pieces have their own bitboards, making it efficient. 
 
 // ----------------------------------------------------------------
 // GLOBAL ATTACK TABLES
 // ----------------------------------------------------------------
-// Array of 64 bitboards -> calculating every moves a piece can take, looks at a position then calculates. Basically a lookup table.
 uint64_t knight_attacks[64];
 uint64_t king_attacks[64];
-// == WEEK 5 ==
-uint64_t pawn_attacks[2][64]; // [side][square]
-// ============
+uint64_t pawn_attacks[2][64];
 
 // ----------------------------------------------------------------
 // LEAPER ATTACK MASKING (Physics)
 // ----------------------------------------------------------------
-// == WEEK 5 ==
 uint64_t mask_pawn_attacks(int side, int square) {
     uint64_t attacks = 0ULL;
     uint64_t piece_bitboard = 0ULL;
     set_bit(piece_bitboard, square);
-
-    // Prevent pieces from wrapping around the board edges during capture
     if (side == WHITE) {
         if ((piece_bitboard >> 7) & 0xfefefefefefefefeULL) attacks |= (piece_bitboard >> 7);
         if ((piece_bitboard >> 9) & 0x7f7f7f7f7f7f7f7fULL) attacks |= (piece_bitboard >> 9);
@@ -86,17 +95,15 @@ uint64_t mask_pawn_attacks(int side, int square) {
     }
     return attacks;
 }
-// ============
 
 uint64_t mask_knight_attacks(int square) {
     uint64_t attacks = 0ULL;
-    int rank = square / 8, file = square % 8; // Converting single number back into a 2D grid w R rank and C file. % 8 gives the collumns and / 8 gives rows.  
-    int r_off[] = {-2, -2, -1, -1, 1, 1, 2, 2}; // Y coord 
-    int c_off[] = {-1, 1, -2, 2, -2, 2, -1, 1}; // Representation of rules for piece, offset arrays. X
+    int rank = square / 8, file = square % 8; 
+    int r_off[] = {-2, -2, -1, -1, 1, 1, 2, 2}; 
+    int c_off[] = {-1, 1, -2, 2, -2, 2, -1, 1}; 
     for (int i = 0; i < 8; i++) {
         int tr = rank + r_off[i], tf = file + c_off[i];
-        if (tr >= 0 && tr < 8 && tf >= 0 && tf < 8) set_bit(attacks, tr * 8 + tf); // IMPORTANT, PREVENTS CLIPPING -> if all good then 2d to 1d index and flip bit to 1. 
-        // the function basically returns all possible landing spaces AS A BITBOARD CALLED ATTACKS. 
+        if (tr >= 0 && tr < 8 && tf >= 0 && tf < 8) set_bit(attacks, tr * 8 + tf); 
     }
     return attacks;
 }
@@ -116,13 +123,10 @@ uint64_t mask_king_attacks(int square) {
 // ----------------------------------------------------------------
 // SLIDING PIECE ATTACKS (Physics)
 // ----------------------------------------------------------------
-// Bishop Ray-Casting: Diagonal movement -> basically a really fancy and cool way of checking square-by-square the direction a bishop is going. 
 uint64_t mask_bishop_attacks(int square, uint64_t occupancy) {
     uint64_t attacks = 0ULL;
     int tr = square / 8, tf = square % 8;
     int r, f;
-    // Top-Right, Top-Left, Bottom-Right, Bottom-Left 
-    // WHAT WE ARE DOING first we set the square as attacked we then check the occupancy if there is something we break the loop there. 
     for (r = tr - 1, f = tf + 1; r >= 0 && f <= 7; r--, f++) {
         set_bit(attacks, r * 8 + f);
         if (get_bit(occupancy, r * 8 + f)) break; 
@@ -142,196 +146,433 @@ uint64_t mask_bishop_attacks(int square, uint64_t occupancy) {
     return attacks;
 }
 
-// Rook Ray-Casting: Orthogonal movement
 uint64_t mask_rook_attacks(int square, uint64_t occupancy) {
     uint64_t attacks = 0ULL;
     int tr = square / 8, tf = square % 8;
     int r, f;
-    for (r = tr - 1; r >= 0; r--) { // Up
+    for (r = tr - 1; r >= 0; r--) { 
         set_bit(attacks, r * 8 + tf);
         if (get_bit(occupancy, r * 8 + tf)) break;
     }
-    for (r = tr + 1; r <= 7; r++) { // Down
+    for (r = tr + 1; r <= 7; r++) { 
         set_bit(attacks, r * 8 + tf);
         if (get_bit(occupancy, r * 8 + tf)) break;
     }
-    for (f = tf - 1; f >= 0; f--) { // Left
+    for (f = tf - 1; f >= 0; f--) { 
         set_bit(attacks, tr * 8 + f);
         if (get_bit(occupancy, tr * 8 + f)) break;
     }
-    for (f = tf + 1; f <= 7; f++) { // Right
+    for (f = tf + 1; f <= 7; f++) { 
         set_bit(attacks, tr * 8 + f);
         if (get_bit(occupancy, tr * 8 + f)) break;
     }
     return attacks;
 }
 
-// Queen is just Rook + Bishop combined OR bitwise. 
 uint64_t mask_queen_attacks(int square, uint64_t occupancy) {
     return mask_rook_attacks(square, occupancy) | mask_bishop_attacks(square, occupancy);
 }
 
 // ----------------------------------------------------------------
+// == WEEK 6 == ATTACK DETECTION (Ghost Pieces)
+// ----------------------------------------------------------------
+int is_square_attacked(Board *board, int square, int attacker_side) {
+    if (attacker_side == WHITE) {
+        if (pawn_attacks[BLACK][square] & board->bitboards[P]) return 1;
+    } else {
+        if (pawn_attacks[WHITE][square] & board->bitboards[p]) return 1; 
+    }
+
+    if (knight_attacks[square] & ((attacker_side == WHITE) ? board->bitboards[N] : board->bitboards[n])) return 1;
+    if (king_attacks[square] & ((attacker_side == WHITE) ? board->bitboards[K] : board->bitboards[k])) return 1;
+
+    uint64_t occupancy = board->occupancies[BOTH];
+    uint64_t b_attacks = mask_bishop_attacks(square, occupancy);
+    uint64_t b_targets = (attacker_side == WHITE) ? (board->bitboards[B] | board->bitboards[Q]) : (board->bitboards[b] | board->bitboards[q]);
+    if (b_attacks & b_targets) return 1;
+
+    uint64_t r_attacks = mask_rook_attacks(square, occupancy);
+    uint64_t r_targets = (attacker_side == WHITE) ? (board->bitboards[R] | board->bitboards[Q]) : (board->bitboards[r] | board->bitboards[q]);
+    if (r_attacks & r_targets) return 1;
+
+    return 0;
+}
+
+// ----------------------------------------------------------------
+// == WEEK 6 == MAKE MOVE (The Physics of Action)
+// ----------------------------------------------------------------
+void make_move(Board *board, uint32_t move) {
+    int source = get_move_source(move);
+    int target = get_move_target(move);
+    int piece = get_move_piece(move);
+    int capture = get_move_capture(move);
+
+    clear_bit(board->bitboards[piece], source);
+    set_bit(board->bitboards[piece], target);
+
+    if (capture) {
+        int start = (board->side == WHITE) ? p : P;
+        int end = (board->side == WHITE) ? k : K;
+        for (int i = start; i <= end; i++) {
+            if (get_bit(board->bitboards[i], target)) {
+                clear_bit(board->bitboards[i], target);
+                break;
+            }
+        }
+    }
+
+    // 3. Refresh occupancies
+    memset(board->occupancies, 0, sizeof(board->occupancies));
+    for (int i = P; i <= K; i++) board->occupancies[WHITE] |= board->bitboards[i];
+    for (int i = p; i <= k; i++) board->occupancies[BLACK] |= board->bitboards[i];
+    board->occupancies[BOTH] = board->occupancies[WHITE] | board->occupancies[BLACK];
+
+    // 4. Flip side
+    board->side ^= 1;
+}
+
+// ----------------------------------------------------------------
 // BOARD HELPERS & FEN PARSER
 // ----------------------------------------------------------------
-// Uses OR to put all 12 pieces bitboards into one single 64 bit map. Basically a kind of physical floor where all pieces are. 
-uint64_t get_occupancy(Board *board) { // NOT SUPER EFFICIENT RN WILL UPDATE 
-    uint64_t occupancy = 0ULL;
-    for (int i = 0; i < 12; i++) occupancy |= board->bitboards[i];
-    return occupancy;
-}
-
-int char_to_piece(char c) {
-    if (c == 'P') return P; if (c == 'N') return N; if (c == 'B') return B;
-    if (c == 'R') return R; if (c == 'Q') return Q; if (c == 'K') return K;
-    if (c == 'p') return p; if (c == 'n') return n; if (c == 'b') return b;
-    if (c == 'r') return r; if (c == 'q') return q; if (c == 'k') return k;
-    return -1;
-}
-
-// FEN HELPERS & PARSER  -> FEN (Forsyth-Edwards Notation) according to Google looks something like this rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w. 
-// in the long output, the letters represent pieces, the numbers represent empty squres, w or b is just whose turn. 
-// 8 [r][n][b][q][k][b][n][r] (黒)
-// 7 [p][p][p][p][p][p][p][p]
-// 6 [ ][ ][ ][ ][ ][ ][ ][ ]
-// 5 [ ][ ][ ][ ][ ][ ][ ][ ]
-// 4 [ ][ ][ ][ ][P][ ][ ][ ]  <-- 白のポーンが e4 に移動
-// 3 [ ][ ][ ][ ][ ][ ][ ][ ]
-// 2 [P][P][P][P][ ][P][P][P]
-// 1 [R][N][B][Q][K][B][N][R] (白)
-//     a  b  c  d  e  f  g  h
-// representation of rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w as a chess board. 
-
-void parse_fen(char *fen, Board *board) { // address of FEN and board :D 
-    memset(board, 0, sizeof(Board)); // An entire board with all zeros
-    // == WEEK 5 == 
-    board->enpassant = -1; // Default no en passant
-    // ============
+void parse_fen(char *fen, Board *board) { 
+    memset(board, 0, sizeof(Board)); 
+    board->enpassant = -1; 
     int square = 0; 
-    while (*fen != ' ') { // Focus on Piece Placement 
+    while (*fen != ' ') { 
         if ((*fen >= 'a' && *fen <= 'z') || (*fen >= 'A' && *fen <= 'Z')) {
-            int piece = char_to_piece(*fen); 
+            int piece; char c = *fen;
+            if (c == 'P') piece = P; else if (c == 'N') piece = N; else if (c == 'B') piece = B;
+            else if (c == 'R') piece = R; else if (c == 'Q') piece = Q; else if (c == 'K') piece = K;
+            else if (c == 'p') piece = p; else if (c == 'n') piece = n; else if (c == 'b') piece = b;
+            else if (c == 'r') piece = r; else if (c == 'q') piece = q; else if (c == 'k') piece = k;
             set_bit(board->bitboards[piece], square);
             square++;
-            // If the character is a letter, it uses my char_to_piece function to find the ID, calls the set bit macro to flip a 1 onto the correct bitboard layer 
-            // at the current square index, and then it moves to the next square. 
         } else if (*fen >= '1' && *fen <= '8') {
-            square += (*fen - '0'); // ASCII to int 0 is 48 and yeah basically a converter 
-            // if it is a digit x, it means there are x empty squares. 
-            // then skips the square counter forward by that amount 
+            square += (*fen - '0'); 
         }
-        fen++; // Next byte in the RAM 
+        fen++; 
     }
     fen++;
-    board->side = (*fen == 'w') ? WHITE : BLACK; // Who 
-    
-    // == WEEK 5 ==
-    // Update the occupancy arrays after parsing
-    for (int p = P; p <= K; p++) board->occupancies[WHITE] |= board->bitboards[p];
-    for (int p = p; p <= k; p++) board->occupancies[BLACK] |= board->bitboards[p];
+    board->side = (*fen == 'w') ? WHITE : BLACK; 
+    for (int i = P; i <= K; i++) board->occupancies[WHITE] |= board->bitboards[i];
+    for (int i = p; i <= k; i++) board->occupancies[BLACK] |= board->bitboards[i];
     board->occupancies[BOTH] = board->occupancies[WHITE] | board->occupancies[BLACK];
-    // ============
 }
 
 // ----------------------------------------------------------------
 // GAME LOGIC (Move Gen & Init)
 // ----------------------------------------------------------------
-// == WEEK 5 ==
-// THE MOVE GENERATOR
-// This function combines physics (Week 4) with rules (Week 5)
 void generate_moves(Board *board, MoveList *move_list) {
     move_list->count = 0;
     int source_square, target_square;
     uint64_t bitboard, attacks;
 
-    // Example 1: Generate Knight Moves
-    int knight_piece = (board->side == WHITE) ? N : n;
-    bitboard = board->bitboards[knight_piece];
+    // Pawns, Knights, Kings, Sliders (Full Set)
+    int pieces[] = { (board->side == WHITE) ? P : p, (board->side == WHITE) ? N : n, 
+                     (board->side == WHITE) ? B : b, (board->side == WHITE) ? R : r, 
+                     (board->side == WHITE) ? Q : q, (board->side == WHITE) ? K : k };
     
-    // Loop through all knights on the board
-    while (bitboard) {
-        source_square = __builtin_ctzll(bitboard); // Get exact square index of the knight
-        // Get attacks, mask out friendly pieces (can't capture own team)
-        attacks = knight_attacks[source_square] & ~board->occupancies[board->side];
-        while (attacks) {
-            target_square = __builtin_ctzll(attacks);
-            // Check if it's a capture
-            int capture_flag = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
-            add_move(move_list, encode_move(source_square, target_square, knight_piece, 0, capture_flag, 0, 0, 0));
-            attacks &= attacks - 1; // Pop LS1B
-        }
-        bitboard &= bitboard - 1; // Pop LS1B
-    }
+    for (int i = 0; i < 6; i++) {
+        int piece = pieces[i];
+        bitboard = board->bitboards[piece];
+        while (bitboard) {
+            source_square = __builtin_ctzll(bitboard);
+            
+            if (piece == P || piece == p) {
+                // Pawn Pushes
+                target_square = (board->side == WHITE) ? source_square - 8 : source_square + 8;
+                if (target_square >= 0 && target_square <= 63 && !get_bit(board->occupancies[BOTH], target_square)) {
+                    add_move(move_list, encode_move(source_square, target_square, piece, 0, 0, 0, 0, 0));
+                    int start_rank = (board->side == WHITE) ? (source_square >= 48 && source_square <= 55) : (source_square >= 8 && source_square <= 15);
+                    int d_target = (board->side == WHITE) ? target_square - 8 : target_square + 8;
+                    if (start_rank && !get_bit(board->occupancies[BOTH], d_target))
+                        add_move(move_list, encode_move(source_square, d_target, piece, 0, 0, 1, 0, 0));
+                }
+                // Pawn Captures
+                attacks = pawn_attacks[board->side][source_square] & board->occupancies[(board->side == WHITE) ? BLACK : WHITE];
+            }
+            else if (piece == N || piece == n) attacks = knight_attacks[source_square];
+            else if (piece == K || piece == k) attacks = king_attacks[source_square];
+            else if (piece == B || piece == b) attacks = mask_bishop_attacks(source_square, board->occupancies[BOTH]);
+            else if (piece == R || piece == r) attacks = mask_rook_attacks(source_square, board->occupancies[BOTH]);
+            else attacks = mask_queen_attacks(source_square, board->occupancies[BOTH]);
 
-    // Example 2: Generate Rook Moves (Sliders)
-    int rook_piece = (board->side == WHITE) ? R : r;
-    bitboard = board->bitboards[rook_piece];
-
-    // == WEEK 5 == 
-    while (bitboard) {
-        source_square = __builtin_ctzll(bitboard); // High speed CPU command. First 1 CPU sees and returns X index.
-        // Rook attack generation needs the current BOTH occupancy layer to stop ray casting 
-        attacks = mask_rook_attacks(source_square, board->occupancies[BOTH]) & ~board->occupancies[board->side];
-        while (attacks) {
-            target_square = __builtin_ctzll(attacks);
-            int capture_flag = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
-            add_move(move_list, encode_move(source_square, target_square, rook_piece, 0, capture_flag, 0, 0, 0));
-            attacks &= attacks - 1;
+            if (piece != P && piece != p) attacks &= ~board->occupancies[board->side]; 
+            
+            while (attacks) {
+                target_square = __builtin_ctzll(attacks);
+                int capture = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
+                add_move(move_list, encode_move(source_square, target_square, piece, 0, capture, 0, 0, 0));
+                attacks &= attacks - 1;
+            }
+            bitboard &= bitboard - 1;
         }
-        bitboard &= bitboard - 1;
     }
 }
-// ============
 
-// PRE COMPUTATION FOR BETTER EFFICIENCY DURING THE GAME
-// THIS BASICALLY CREATES A MAP? TO GIVE ALL POSSIBLE MOVES -> I WILL ADD THE SLIDERS IN WEEK 5 or 6
-void init_all() { // Initialization 
-    for (int i = 0; i < 64; i++) { // Iterates through every single square on the board 
-        // == WEEK 5 ==
+void init_all() { 
+    for (int i = 0; i < 64; i++) { 
         pawn_attacks[WHITE][i] = mask_pawn_attacks(WHITE, i);
         pawn_attacks[BLACK][i] = mask_pawn_attacks(BLACK, i);
-        // ============
         knight_attacks[i] = mask_knight_attacks(i);
         king_attacks[i] = mask_king_attacks(i);
     }
 }
 
-// ----------------------------------------------------------------
-// DEBUG TOOLS
-// ----------------------------------------------------------------
-// Basically the function that makes everything readable to the human into a big big string into an array. 
-void print_bitboard(uint64_t bitboard) {
+const int piece_values[] = { 100, 300, 300, 500, 900, 10000, 100, 300, 300, 500, 900, 10000 };
+
+int evaluate(Board *board) {
+    int score = 0;
+    uint64_t bitboard;
+    int square;
+
+    // WHITE PIECES
+    for (int piece = P; piece <= K; piece++) {
+        bitboard = board->bitboards[piece];
+        while (bitboard) {
+            square = __builtin_ctzll(bitboard);
+            score += piece_values[piece];     
+
+            if (piece == N) score += knight_pst[square];
+            if (piece == P) score += pawn_pst[square];
+            
+            bitboard &= bitboard - 1; 
+        }
+    }
+
+    // BLACK PIECES
+    for (int piece = p; piece <= k; piece++) {
+        bitboard = board->bitboards[piece];
+        while (bitboard) {
+            square = __builtin_ctzll(bitboard);
+            score -= piece_values[piece];      
+
+            int flipped_square = square ^ 56; 
+            
+            if (piece == n) score -= knight_pst[flipped_square];
+            if (piece == p) score -= pawn_pst[flipped_square];
+            
+            bitboard &= bitboard - 1;
+        }
+    }
+
+    return (board->side == WHITE) ? score : -score;
+}
+
+int alpha_beta(Board *board, int alpha, int beta, int depth) {
+
+    if (depth == 0) return evaluate(board);
+
+    MoveList moves;
+    generate_moves(board, &moves);
+
+    int legal_moves = 0;
+
+    for (int i = 0; i < moves.count; i++) {
+
+        Board temp_board = *board;
+        make_move(&temp_board, moves.moves[i]);
+
+
+        int king_piece = (board->side == WHITE) ? K : k;
+        int king_square = __builtin_ctzll(temp_board.bitboards[king_piece]);
+        
+
+        if (is_square_attacked(&temp_board, king_square, temp_board.side)) continue;
+
+        legal_moves++;
+
+
+        int score = -alpha_beta(&temp_board, -beta, -alpha, depth - 1);
+
+
+        if (score >= beta) return beta;
+
+
+        if (score > alpha) alpha = score;
+    }
+
+
+    if (legal_moves == 0) {
+        int king_piece = (board->side == WHITE) ? K : k;
+        int king_square = __builtin_ctzll(board->bitboards[king_piece]);
+
+
+        if (is_square_attacked(board, king_square, board->side ^ 1)) {
+
+            return -49000 + depth;
+        } 
+        else {
+            return 0;
+        }
+    }
+
+    return alpha;
+}
+
+uint32_t search_position(Board *board, int depth) {
+    MoveList moves; 
+    generate_moves(board, &moves);
+
+    uint32_t best_move = 0;
+    int best_score = -50000;
+
+    for (int i = 0; i < moves.count; i++) {
+        Board temp_board = *board;
+        make_move(&temp_board, moves.moves[i]);
+
+        int king_piece = (board->side == WHITE) ? K : k;
+        int king_square = __builtin_ctzll(temp_board.bitboards[king_piece]);
+
+        if (is_square_attacked(&temp_board, king_square, temp_board.side)) continue;
+
+        int score = -alpha_beta(&temp_board, -50000, 50000, depth - 1);
+
+        if (score > best_score) {
+            best_score = score;
+            best_move = moves.moves[i];
+        }
+    }
+    return best_move; 
+}
+
+char piece_chars[] = "PNBRQKpnbrqk";
+void print_board(Board *board) {
     printf("\n");
-    for (int row = 0; row < 8; row++) {
-        for (int col = 0; col < 8; col++) {
-            if (!col) printf(" %d ", 8 - row);
-            printf(" %d ", get_bit(bitboard, row * 8 + col));
+    for (int rank = 0; rank < 8; rank++) {
+        for (int file = 0; file < 8; file++) {
+            int square = rank * 8 + file;
+            if (file == 0) printf(" %d  ", 8 - rank);
+            int piece = -1;
+            for (int bb_piece = P; bb_piece <= k; bb_piece++) {
+                if (get_bit(board->bitboards[bb_piece], square)) {
+                    piece = bb_piece;
+                    break;
+                }
+            }
+            if (piece == -1) printf(". ");
+            else printf("%c ", piece_chars[piece]);
         }
         printf("\n");
     }
-    printf("\n    a  b  c  d  e  f  g  h\n\n");
+    printf("\n    a b c d e f g h\n\n");
 }
-// My bitboard is a flat line of 64 bits. To show it as a board I have to mathematically wrap that line every 8 bits. This formula maps the 2D visual grid back to the 1D physical memory.
+
+int parse_move(Board *board, char *move_string) {
+    int source = (move_string[0] - 'a') + (8 - (move_string[1] - '0')) * 8;
+    int target = (move_string[2] - 'a') + (8 - (move_string[3] - '0')) * 8;
+    
+    int piece = -1;
+
+    for (int bb_piece = P; bb_piece <= k; bb_piece++) {
+        if (get_bit(board->bitboards[bb_piece], source)) {
+            piece = bb_piece;
+            break;
+        }
+    }
+
+
+    int capture = 0;
+    for (int bb_piece = P; bb_piece <= k; bb_piece++) {
+        if (get_bit(board->bitboards[bb_piece], target)) {
+            capture = 1;
+            break;
+        }
+    }
+
+    return encode_move(source, target, piece, 0, capture, 0, 0, 0);
+}
+
+void print_move(uint32_t move) {
+    printf("%c%d%c%d\n", 
+           (get_move_source(move) % 8) + 'a', 8 - (get_move_source(move) / 8),
+           (get_move_target(move) % 8) + 'a', 8 - (get_move_target(move) / 8));
+}
+
+uint32_t get_user_move(Board *board) {
+    MoveList legal_moves;
+    generate_moves(board, &legal_moves);
+    
+    // Filter for strictly legal moves (not leaving king in check)
+    MoveList strictly_legal;
+    strictly_legal.count = 0;
+    for (int i = 0; i < legal_moves.count; i++) {
+        Board temp = *board;
+        make_move(&temp, legal_moves.moves[i]);
+        int king_sq = __builtin_ctzll(temp.bitboards[(board->side == WHITE) ? K : k]);
+        if (!is_square_attacked(&temp, king_sq, temp.side)) {
+            add_move(&strictly_legal, legal_moves.moves[i]);
+        }
+    }
+
+    char input[10];
+    while (1) {
+        printf("Your move (e.g., e2e4): ");
+        if (!fgets(input, sizeof(input), stdin)) return 0;
+
+        if (strlen(input) < 4) continue;
+
+        int start_sq = (input[0] - 'a') + (8 - (input[1] - '0')) * 8;
+        int target_sq = (input[2] - 'a') + (8 - (input[3] - '0')) * 8;
+
+        for (int i = 0; i < strictly_legal.count; i++) {
+            uint32_t m = strictly_legal.moves[i];
+            if (get_move_source(m) == start_sq && get_move_target(m) == target_sq) {
+                return m; 
+            }
+        }
+        printf("Invalid move! That is either illegal or your piece isn't there. Try again.\n");
+    }
+}
 
 // ----------------------------------------------------------------
-// MAIN – Week 4 Collision Test
+// MAIN 
 // ----------------------------------------------------------------
 int main() {
     init_all();
     Board board;
 
-    // FEN with a Rook on e4 and a Pawn blocking it at e6
-    char *test_fen = "8/8/4p3/8/4R3/8/8/8 w - - 0 1";
-    parse_fen(test_fen, &board);
-    
-    // == WEEK 5 ==
-    printf("--- WEEK 5: MOVE GENERATION TEST ---\n");
-    MoveList moves;
-    generate_moves(&board, &moves);
-    printf("Total pseudo-legal moves for Knights and Rooks generated: %d\n", moves.count);
-    // ============
+    parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", &board);
+
+    while (1) {
+        print_board(&board);
+
+        // 1. Generate legal moves to check for Game Over
+        MoveList moves;
+        generate_moves(&board, &moves);
+        
+        int legal_move_count = 0;
+        for (int i = 0; i < moves.count; i++) {
+            Board temp = board;
+            make_move(&temp, moves.moves[i]);
+            int king_sq = __builtin_ctzll(temp.bitboards[(board.side == WHITE) ? K : k]);
+            if (!is_square_attacked(&temp, king_sq, temp.side)) legal_move_count++;
+        }
+
+        // 2. Check for Checkmate/Stalemate
+        if (legal_move_count == 0) {
+            int king_sq = __builtin_ctzll(board.bitboards[(board.side == WHITE) ? K : k]);
+            if (is_square_attacked(&board, king_sq, board.side ^ 1)) {
+                if (board.side == WHITE) printf("CHECKMATE! BLACK WINS!\n");
+                else printf("CHECKMATE! WHITE WINS!\n");
+            } else {
+                printf("STALEMATE! It's a draw.\n");
+            }
+            break; 
+        }
+
+        // 3. Execute Turns
+        if (board.side == WHITE) {
+            uint32_t move = get_user_move(&board);
+            make_move(&board, move);
+        } else {
+            printf("AI is thinking...\n");
+            uint32_t move = search_position(&board, 4); 
+            printf("AI plays: ");
+            print_move(move);
+            make_move(&board, move);
+        }
+    }
 
     return 0;
 }
-
-// DEBUGGED WITH HELP OF GEMINI 3.1 PRO FOR WEEK 5
