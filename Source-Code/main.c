@@ -547,7 +547,7 @@ int main(int argc, char *argv[]) {
     }
 
   
-    uint32_t move = search_position(&board, 4); 
+    uint32_t move = search_position(&board, 6); 
     
 
     if (move != 0) {
