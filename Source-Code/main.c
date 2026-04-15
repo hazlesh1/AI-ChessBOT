@@ -14,9 +14,9 @@
 #define set_bit(bitboard, square) ((bitboard) |= (1ULL << (square)))
 #define clear_bit(bitboard, square) ((bitboard) &= ~(1ULL << (square)))
 
-// == WEEK 5 ==
-#define encode_move(source, target, piece, promoted, capture, double_push, enpassant, castling) \
+#define encode_move(source, target, piece, promoted, capture, double_push, enpassant, castling, captured_piece) \
     ((source) | ((target) << 6) | ((piece) << 12) | ((promoted) << 16) | \
+    ((captured_piece) << 24) | \
     ((capture) << 20) | ((double_push) << 21) | ((enpassant) << 22) | ((castling) << 23))
 
 #define get_move_source(move) ((move) & 0x3f)
@@ -24,7 +24,8 @@
 #define get_move_piece(move) (((move) >> 12) & 0xf)
 #define get_move_capture(move) (((move) >> 20) & 0x1)
 #define get_move_castling(move) (((move) >> 23) & 0x1)
-// ============
+#define get_move_captured_piece(move) (((move) >> 24) & 0xf)
+
 
 enum { P, N, B, R, Q, K, p, n, b, r, q, k };
 enum { WHITE, BLACK, BOTH };
@@ -304,11 +305,11 @@ void generate_moves(Board *board, MoveList *move_list) {
                 // Pawn Pushes
                 target_square = (board->side == WHITE) ? source_square - 8 : source_square + 8;
                 if (target_square >= 0 && target_square <= 63 && !get_bit(board->occupancies[BOTH], target_square)) {
-                    add_move(move_list, encode_move(source_square, target_square, piece, 0, 0, 0, 0, 0));
+                    add_move(move_list, encode_move(source_square, target_square, piece, 0, 0, 0, 0, 0, 0));
                     int start_rank = (board->side == WHITE) ? (source_square >= 48 && source_square <= 55) : (source_square >= 8 && source_square <= 15);
                     int d_target = (board->side == WHITE) ? target_square - 8 : target_square + 8;
                     if (start_rank && !get_bit(board->occupancies[BOTH], d_target))
-                        add_move(move_list, encode_move(source_square, d_target, piece, 0, 0, 1, 0, 0));
+                        add_move(move_list, encode_move(source_square, d_target, piece, 0, 0, 1, 0, 0, 0));
                 }
                 // Pawn Captures
                 attacks = pawn_attacks[board->side][source_square] & board->occupancies[(board->side == WHITE) ? BLACK : WHITE];
@@ -324,7 +325,7 @@ void generate_moves(Board *board, MoveList *move_list) {
             while (attacks) {
                 target_square = __builtin_ctzll(attacks);
                 int capture = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
-                add_move(move_list, encode_move(source_square, target_square, piece, 0, capture, 0, 0, 0));
+                add_move(move_list, encode_move(source_square, target_square, piece, 0, capture, 0, 0, 0, 0));  
                 attacks &= attacks - 1;
             }
             bitboard &= bitboard - 1;
@@ -502,7 +503,7 @@ int parse_move(Board *board, char *move_string) {
         }
     }
 
-    return encode_move(source, target, piece, 0, capture, 0, 0, 0);
+    return encode_move(source, target, piece, 0, capture, 0, 0, 0, 0); 
 }
 
 void print_move(uint32_t move) {
@@ -545,6 +546,11 @@ uint32_t get_user_move(Board *board) {
         }
         printf("Invalid move! That is either illegal or your piece isn't there. Try again.\n");
     }
+}
+
+
+void unmake_move(Board *board, uint32_t move){
+    
 }
 
 // ----------------------------------------------------------------
