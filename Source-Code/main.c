@@ -309,7 +309,7 @@ void generate_moves(Board *board, MoveList *move_list) {
                     int start_rank = (board->side == WHITE) ? (source_square >= 48 && source_square <= 55) : (source_square >= 8 && source_square <= 15);
                     int d_target = (board->side == WHITE) ? target_square - 8 : target_square + 8;
                     if (start_rank && !get_bit(board->occupancies[BOTH], d_target))
-                        add_move(move_list, encode_move(source_square, d_target, piece, 0, 0, 1, 0, 0, 0));
+                        add_move(move_list, encode_move(source_square, d_target, piece, 0, capture, 1, 0, 0, 0));
                 }
                 // Pawn Captures
                 attacks = pawn_attacks[board->side][source_square] & board->occupancies[(board->side == WHITE) ? BLACK : WHITE];
@@ -325,7 +325,7 @@ void generate_moves(Board *board, MoveList *move_list) {
             while (attacks) {
                 target_square = __builtin_ctzll(attacks);
                 int capture = get_bit(board->occupancies[(board->side == WHITE) ? BLACK : WHITE], target_square);
-                add_move(move_list, encode_move(source_square, target_square, piece, 0, capture, 0, 0, 0, 0));  
+                add_move(move_list, encode_move(source_square, target_square, piece, 0, capture, 0, 0, 0, 0));
                 attacks &= attacks - 1;
             }
             bitboard &= bitboard - 1;
@@ -503,7 +503,7 @@ int parse_move(Board *board, char *move_string) {
         }
     }
 
-    return encode_move(source, target, piece, 0, capture, 0, 0, 0, 0); 
+    return encode_move(source, target, piece, 0, capture, 0, 0, 0, 0);
 }
 
 void print_move(uint32_t move) {
@@ -516,7 +516,6 @@ uint32_t get_user_move(Board *board) {
     MoveList legal_moves;
     generate_moves(board, &legal_moves);
     
-    // Filter for strictly legal moves (not leaving king in check)
     MoveList strictly_legal;
     strictly_legal.count = 0;
     for (int i = 0; i < legal_moves.count; i++) {
