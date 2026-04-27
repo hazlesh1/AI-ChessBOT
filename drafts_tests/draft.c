@@ -358,4 +358,25 @@ int main() {
     return 0;
 }
 
+
+
+// if (capture) {
+    //     int start = (board->side == WHITE) ? p : P;
+    //     int end = (board->side == WHITE) ? k : K;
+    //     for (int i = start; i <= end; i++) {
+    //         if (get_bit(board->bitboards[i], target)) {
+    //             clear_bit(board->bitboards[i], target);
+    //             break;
+    //         }
+    //     }
+    // }
+
+
+
+    // int source = get_move_source(move);
+    // int target = get_move_target(move);
+    // int piece = get_move_piece(move);
+    // int capture = get_move_capture(move);
+
+    
 // DEBUGGED WITH HELP OF GEMINI 3.1 PRO FOR WEEK 5
