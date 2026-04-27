@@ -626,12 +626,12 @@ int alpha_beta(Board *board, int alpha, int beta, int depth) {
     }
 
     if (legal_moves == 0) {
-
         int king_piece = (board->side == WHITE) ? K : k;
         int king_square = __builtin_ctzll(board->bitboards[king_piece]);
 
         if (is_square_attacked(board, king_square, board->side ^ 1)) {
-            return -49000 + depth; 
+            // - depth A quicker mate (higher remaining depth) 
+            return -49000 - depth; 
         } else {
             return 0; 
         }
@@ -640,12 +640,46 @@ int alpha_beta(Board *board, int alpha, int beta, int depth) {
     return alpha;
 }
 
+// uint32_t search_position(Board *board, int depth) {
+//     MoveList moves; 
+//     generate_moves(board, &moves);
+
+//     uint32_t best_move = 0;
+//     int best_score = -50000;
+
+//     for (int i = 0; i < moves.count; i++) {
+//         make_move(board, moves.moves[i]);
+
+//         int king_piece = (board->side == WHITE) ? k : K;
+//         int king_square = __builtin_ctzll(board->bitboards[king_piece]);
+
+//         if (is_square_attacked(board, king_square, board->side)) {
+//             unmake_move(board, moves.moves[i]);
+//             continue;
+//         }
+
+//         int score = -alpha_beta(board, -50000, 50000, depth - 1);
+
+//         unmake_move(board, moves.moves[i]);
+
+//         if (score > best_score) {
+//             best_score = score;
+//             best_move = moves.moves[i];
+//         }
+//     }
+//     return best_move; 
+// }
+
 uint32_t search_position(Board *board, int depth) {
     MoveList moves; 
     generate_moves(board, &moves);
 
     uint32_t best_move = 0;
     int best_score = -50000;
+    
+    // FIX: Initiealiz alpha and beta at the root
+    int alpha = -50000;
+    int beta = 50000;
 
     for (int i = 0; i < moves.count; i++) {
         make_move(board, moves.moves[i]);
@@ -658,13 +692,19 @@ uint32_t search_position(Board *board, int depth) {
             continue;
         }
 
-        int score = -alpha_beta(board, -50000, 50000, depth - 1);
+        // FIX:  -beta and -alpha down 
+        int score = -alpha_beta(board, -beta, -alpha, depth - 1);
 
         unmake_move(board, moves.moves[i]);
 
         if (score > best_score) {
             best_score = score;
             best_move = moves.moves[i];
+        }
+        
+        // FIX: Update alpha at the root 
+        if (score > alpha) {
+            alpha = score;
         }
     }
     return best_move; 
@@ -740,7 +780,7 @@ uint32_t get_user_move(Board *board) {
 
     char input[10];
     while (1) {
-        printf("Your move (e.g., e2e4): ");
+        printf("Your move (e.g., e2e4 or e7e8q): ");
         if (!fgets(input, sizeof(input), stdin)) return 0;
 
         if (strlen(input) < 4) continue;
@@ -748,10 +788,27 @@ uint32_t get_user_move(Board *board) {
         int start_sq = (input[0] - 'a') + (8 - (input[1] - '0')) * 8;
         int target_sq = (input[2] - 'a') + (8 - (input[3] - '0')) * 8;
 
+        //(default promo queen)
+        char promo_char = (strlen(input) >= 5 && input[4] != '\n') ? input[4] : 'q';
+        int target_promo = 0;
+        
+        if (promo_char == 'q') target_promo = (board->side == WHITE) ? Q : q;
+        else if (promo_char == 'r') target_promo = (board->side == WHITE) ? R : r;
+        else if (promo_char == 'b') target_promo = (board->side == WHITE) ? B : b;
+        else if (promo_char == 'n') target_promo = (board->side == WHITE) ? N : n;
+
         for (int i = 0; i < strictly_legal.count; i++) {
             uint32_t m = strictly_legal.moves[i];
+            
             if (get_move_source(m) == start_sq && get_move_target(m) == target_sq) {
-                return m; 
+                int m_promo = ((m >> 16) & 0xf);
+                
+                // if promo -> enforce exact match
+                if (m_promo) {
+                    if (m_promo == target_promo) return m;
+                } else {
+                    return m; // normal moves
+                }
             }
         }
         printf("Invalid move! That is either illegal or your piece isn't there. Try again.\n");
