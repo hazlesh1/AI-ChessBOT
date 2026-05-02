@@ -206,7 +206,7 @@ int char_to_piece(char c) {
     return -1;
 }
 
-// FEN HELPERS & PARSER  -> FEN (Forsyth-Edwards Notation) according to Google looks something like this rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w. 
+// FEN HELPERS & PARSER  -> FEN (Forsyth-Edwards Notation) according to Google (;-;) looks something like this rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w. 
 // in the long output, the letters represent pieces, the numbers represent empty squres, w or b is just whose turn. 
 // 8 [r][n][b][q][k][b][n][r] (黒)
 // 7 [p][p][p][p][p][p][p][p]

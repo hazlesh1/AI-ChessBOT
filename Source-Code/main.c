@@ -237,7 +237,7 @@ void make_move(Board *board, uint32_t move);
 // == WEEK 6 == MAKE MOVE (The Physics of Action)
 // ----------------------------------------------------------------
 void make_move(Board *board, uint32_t move) {
-    // 1. SAVE HISTORY
+    // SAVE HISTORY
     board->history[board->history_ptr].castling = board->castling;
     board->history[board->history_ptr].enpassant = board->enpassant;
     board->history_ptr++;
@@ -262,13 +262,26 @@ void make_move(Board *board, uint32_t move) {
     }
 
  
-    if (enpassant) {
-        int ep_sq = (board->side == WHITE) ? trg + 8 : trg - 8;
-        clear_bit(board->bitboards[cap_pce], ep_sq);
-    } else if (cap) {
-        clear_bit(board->bitboards[cap_pce], trg);
-    }
+    // if (enpassant) {
+    //     int ep_sq = (board->side == WHITE) ? trg + 8 : trg - 8;
+    //     clear_bit(board->bitboards[cap_pce], ep_sq);
+    // } else if (cap) {
+    //     clear_bit(board->bitboards[cap_pce], trg);
+    // }
 
+    if (enpassant) {
+
+        int pawn = (board->side == WHITE) ? p : P;
+        int ep_sq = (board->side == WHITE) ? trg + 8 : trg - 8;
+
+        clear_bit(board->bitboards[pawn], ep_sq);
+    }
+    else if (cap) {
+
+        if (cap_pce >= P && cap_pce <= k) {
+            clear_bit(board->bitboards[cap_pce], trg);
+        }
+    }
 
     if (castling) {
         switch (trg) {
@@ -680,12 +693,20 @@ uint32_t search_position(Board *board, int depth) {
     // FIX: Initiealiz alpha and beta at the root
     int alpha = -50000;
     int beta = 50000;
+    
 
     for (int i = 0; i < moves.count; i++) {
         make_move(board, moves.moves[i]);
 
         int king_piece = (board->side == WHITE) ? k : K;
-        int king_square = __builtin_ctzll(board->bitboards[king_piece]);
+        uint64_t king_bb = board->bitboards[king_piece];
+
+        if (!king_bb) {
+            unmake_move(board, moves.moves[i]);
+            continue; 
+        }
+
+        int king_square = __builtin_ctzll(king_bb);
 
         if (is_square_attacked(board, king_square, board->side)) {
             unmake_move(board, moves.moves[i]);
@@ -783,6 +804,8 @@ uint32_t get_user_move(Board *board) {
         printf("Your move (e.g., e2e4 or e7e8q): ");
         if (!fgets(input, sizeof(input), stdin)) return 0;
 
+        input[strcspn(input, "\n")] = 0;
+
         if (strlen(input) < 4) continue;
 
         int start_sq = (input[0] - 'a') + (8 - (input[1] - '0')) * 8;
@@ -839,11 +862,25 @@ void unmake_move(Board *board, uint32_t move) {
     set_bit(board->bitboards[pce], src);
 
 
+    // if (enpassant) {
+    //     int ep_sq = (board->side == WHITE) ? trg + 8 : trg - 8;
+    //     set_bit(board->bitboards[cap_pce], ep_sq);
+    // } else if (cap) {
+    //     set_bit(board->bitboards[cap_pce], trg);
+    // }
+
     if (enpassant) {
+
+        int pawn = (board->side == WHITE) ? p : P;
         int ep_sq = (board->side == WHITE) ? trg + 8 : trg - 8;
-        set_bit(board->bitboards[cap_pce], ep_sq);
-    } else if (cap) {
-        set_bit(board->bitboards[cap_pce], trg);
+
+        set_bit(board->bitboards[pawn], ep_sq);
+    }
+    else if (cap) {
+
+        if (cap_pce >= P && cap_pce <= k) {
+            clear_bit(board->bitboards[cap_pce], trg);
+        }
     }
 
 
@@ -886,7 +923,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    uint32_t move = search_position(&board, 6); 
+    uint32_t move = search_position(&board, 5); 
 
     if (move != 0) {
         print_move(move);
