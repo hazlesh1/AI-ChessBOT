@@ -29,7 +29,7 @@ d-----         2026/04/28      1:56                venv
 
 This should be included. Run server.py using python to test the engine and play against the engine.
 
-`main.c` includes the main code for the engine.
+`main.c` includes the main code for the engine. Edit the depth on line 926 in the function     uint32_t move = search_position(&board, 5); // change the 5 to the desired depth
 
 Feel free to edit the `index.html` in the templates directory to make the game more enjoyable.
 
