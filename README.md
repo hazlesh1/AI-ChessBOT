@@ -87,7 +87,7 @@ typedef struct {
 - Each bitboard uses individual bits to represent a piece on a square (1 = occupied, 0 = empty).
 - Despite multiple bitboards, occupancies, and game state history, the entire structure only takes about 8328 bytes, which is extremely compact for a full chess engine state.
 
-For comparison, a naive Python implementation that stores full board states as integer arrays for each history entry would require approximately 1.8–2.0 MB of memory. However, actual memory usage depends heavily on the implementation details. C remains significantly more memory-efficient for systems like this due to its ability to use fixed-size, low-overhead data structures.
+For comparison,a Python implementation that stores full board states as integer arrays for each history entry would require approximately 1.8–2.0 MB of memory. However, actual memory usage depends heavily on the implementation details. C remains significantly more memory-efficient for systems like this due to its ability to use fixed-size, low-overhead data structures.
 
 ---
 
