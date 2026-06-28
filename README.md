@@ -214,11 +214,11 @@ board->history_ptr++;
 
 ---
 
-## Bottlenecks and goals for future similar projects
+## Notes
 
-Right now, the engine has a horizon effect. If a capture happens just beyond the depth limit, the engine might make a suicidal move because it can't see one step further…
+Right now, the engine has a horizon effect. If a capture happens just beyond the depth limit, the engine might make a suicidal move because it can't see one step further… (yes big problem) 
 
-Plausible solutions for next projects:
+Plausible solutions for next projects after some researches:
 
 - Implementing **quiescence search** to continue searching "loud" positions (captures/checks) until the board becomes "quiet."
 - **Transposition tables** where chess paths lead to the same position…
