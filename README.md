@@ -1,6 +1,6 @@
-# AI-ChessBOT
+# ChessBOT
 
-**Source Code:** https://github.com/hazlesh1/AI-ChessBOT
+**Source Code:** https://github.com/hazlesh1/ChessBOT
 
 **Date:** 2026/02/01 (start) - 2026/04/29 (end)
 
